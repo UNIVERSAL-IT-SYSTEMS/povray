@@ -641,6 +641,9 @@ enum TOKEN_IDS
     PAVEMENT_TOKEN,
     TILING_TOKEN,
     XYZ_TOKEN,
+
+    DLL_TOKEN,
+
     LAST_TOKEN
 };
 

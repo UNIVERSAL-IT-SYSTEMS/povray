@@ -54,6 +54,8 @@
 
 #include "backend/vm/fnpovfpu.h"
 
+#include "../include/povray_plugin.h"
+
 // this must be the last file included
 #include "base/povdebug.h"
 
@@ -171,6 +173,7 @@ DBL f_noise_generator(FPUContext *ctx, DBL *ptr, unsigned int fn); // 78
 void f_pigment(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 0
 void f_transform(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 1
 void f_spline(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 2
+void f_dll(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 3
 
 
 /*****************************************************************************
@@ -266,11 +269,12 @@ const TrapS POVFPU_TrapSTable[] =
     { f_pigment,                 0 + 3 }, // 0
     { f_transform,               0 + 3 }, // 1
     { f_spline,                  0 + 1 }, // 2
+    { f_dll,                     0 + 3 }, // 3
     { NULL, 0 }
 };
 
 const unsigned int POVFPU_TrapTableSize = 79;
-const unsigned int POVFPU_TrapSTableSize = 3;
+const unsigned int POVFPU_TrapSTableSize = 4;
 
 
 /*****************************************************************************
@@ -1288,6 +1292,31 @@ void f_spline(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp) // 2
                 ctx->SetLocal(sp + T + 1, Result[T + 1]);
         }
     }
+}
+
+void f_dll(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp) // 1
+{
+	double data[] = {
+		PARAM_N_X(3),
+		PARAM_N_Y(3),
+		PARAM_N_Z(3)
+	};
+    FunctionCode *f = ctx->functionvm->GetFunction(fn);
+
+	if(f->private_data == NULL)
+    {
+        ctx->SetLocal(sp + X, 0.0);
+        ctx->SetLocal(sp + Y, 0.0);
+        ctx->SetLocal(sp + Z, 0.0);
+        return;
+    }
+	
+	povray_vector_fn* function = reinterpret_cast<povray_vector_fn*>(f->private_data);
+	function(data);
+
+    ctx->SetLocal(sp + X, data[0]);
+    ctx->SetLocal(sp + Y, data[1]);
+    ctx->SetLocal(sp + Z, data[2]);
 }
 
 }

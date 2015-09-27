@@ -639,7 +639,9 @@ const RESERVED_WORD Reserved_Words[LAST_TOKEN] = {
     {XYZ_TOKEN, "xyz"},
     {YES_TOKEN, "yes"},
     {Y_TOKEN, "y"},
-    {Z_TOKEN, "z"}
+    {Z_TOKEN, "z"},
+
+    {DLL_TOKEN, "dll"}
 };
 
 } // end of pov namespace
