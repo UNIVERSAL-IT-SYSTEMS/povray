@@ -641,7 +641,8 @@ const RESERVED_WORD Reserved_Words[LAST_TOKEN] = {
     {Y_TOKEN, "y"},
     {Z_TOKEN, "z"},
 
-    {DLL_TOKEN, "dll"}
+    {DLL_TOKEN, "dll"},
+	{VECTOR_TOKEN, "vector"}
 };
 
 } // end of pov namespace

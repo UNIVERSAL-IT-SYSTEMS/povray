@@ -643,6 +643,7 @@ enum TOKEN_IDS
     XYZ_TOKEN,
 
     DLL_TOKEN,
+	VECTOR_TOKEN,
 
     LAST_TOKEN
 };

@@ -5,7 +5,8 @@
 extern "C" {
 #endif
 
-typedef void povray_vector_fn(double* data);
+typedef void povray_vector_fn(double* inputs, double* outputs);
+typedef double povray_scalar_fn(double* inputs);
 	
 #ifdef __cplusplus
 }

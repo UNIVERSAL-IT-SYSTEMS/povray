@@ -169,11 +169,12 @@ DBL f_witch_of_agnesi_2d(FPUContext *ctx, DBL *ptr, unsigned int fn); // 75
 DBL f_noise3d(FPUContext *ctx, DBL *ptr, unsigned int fn); // 76
 DBL f_pattern(FPUContext *ctx, DBL *ptr, unsigned int fn); // 77
 DBL f_noise_generator(FPUContext *ctx, DBL *ptr, unsigned int fn); // 78
+DBL f_dll_scalar(FPUContext *ctx, DBL *ptr, unsigned int fn); // 79
 
 void f_pigment(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 0
 void f_transform(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 1
 void f_spline(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 2
-void f_dll(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 3
+void f_dll_vector(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp); // 3
 
 
 /*****************************************************************************
@@ -261,6 +262,7 @@ const Trap POVFPU_TrapTable[] =
     { f_noise3d,                 0 + 3 }, // 76
     { f_pattern,                 0 + 3 }, // 77
     { f_noise_generator,         1 + 3 }, // 78
+	{ f_dll_scalar,              0 + 3 }, // 79
     { NULL, 0 }
 };
 
@@ -269,11 +271,11 @@ const TrapS POVFPU_TrapSTable[] =
     { f_pigment,                 0 + 3 }, // 0
     { f_transform,               0 + 3 }, // 1
     { f_spline,                  0 + 1 }, // 2
-    { f_dll,                     0 + 3 }, // 3
+    { f_dll_vector,              0 + 3 }, // 3
     { NULL, 0 }
 };
 
-const unsigned int POVFPU_TrapTableSize = 79;
+const unsigned int POVFPU_TrapTableSize = 80;
 const unsigned int POVFPU_TrapSTableSize = 4;
 
 
@@ -1294,29 +1296,29 @@ void f_spline(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp) // 2
     }
 }
 
-void f_dll(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int sp) // 1
+void f_dll_vector(FPUContext *ctx, DBL *ptr, unsigned int fn, unsigned int) // 3
 {
-	double data[] = {
-		PARAM_N_X(3),
-		PARAM_N_Y(3),
-		PARAM_N_Z(3)
-	};
     FunctionCode *f = ctx->functionvm->GetFunction(fn);
 
-	if(f->private_data == NULL)
+	ptr[0] = ptr[1] = ptr[2] = 0.0;
+	if(f->private_data != NULL)
     {
-        ctx->SetLocal(sp + X, 0.0);
-        ctx->SetLocal(sp + Y, 0.0);
-        ctx->SetLocal(sp + Z, 0.0);
-        return;
-    }
-	
-	povray_vector_fn* function = reinterpret_cast<povray_vector_fn*>(f->private_data);
-	function(data);
+		povray_vector_fn* function = reinterpret_cast<povray_vector_fn*>(f->private_data);
+		function(ptr+3, ptr+0);
+	}
+}
 
-    ctx->SetLocal(sp + X, data[0]);
-    ctx->SetLocal(sp + Y, data[1]);
-    ctx->SetLocal(sp + Z, data[2]);
+DBL f_dll_scalar(FPUContext *ctx, DBL *ptr, unsigned int fn) // 79
+{
+    FunctionCode *f = ctx->functionvm->GetFunction(fn);
+
+	if(f->private_data != NULL)
+    {
+		povray_scalar_fn* function = reinterpret_cast<povray_scalar_fn*>(f->private_data);
+		return function(ptr);
+	}
+
+	return 0.0;
 }
 
 }

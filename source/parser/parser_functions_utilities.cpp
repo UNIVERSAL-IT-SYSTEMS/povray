@@ -236,18 +236,35 @@ FUNCTION_PTR Parser::Parse_DeclareFunction(int *token_id, const char *fn_name, b
 			Expectation_Error("symbol name");
 		char* symbol_name = POV_STRDUP(Token.Token_String);
 
+		bool isvector = false;
+        Get_Token();
+        if(Token.Token_Id != COMMA_TOKEN)
+            Unget_Token();
+		else
+		{
+			Get_Token();
+			if(Token.Token_Id != VECTOR_TOKEN)
+				Expectation_Error("vector");
+			isvector = true;
+		}
+
 		GET(RIGHT_PAREN_TOKEN);
 
-        expression = FNSyntax_GetTrapExpression(3); // 3 refers to POVFPU_TrapSTable[3] = f_dll [trf]
+		// 3 refers to POVFPU_TrapSTable[3] = f_dll_vector [trf]
+		// 79 refers to POVFPU_TrapTable[79] = f_dll_scalar [trf]
+        expression = FNSyntax_GetTrapExpression(isvector ? 3 : 79);
 
 		/* FIXME --- this needs to be abstracted out to be portable */
 		void* dll = dlopen(dll_name, RTLD_LAZY);
 		if (!dll)
-			Error("DLL '%s' could not be loaded.", dll_name);
+			Error("DLL '%s' could not be loaded: %s", dll_name, dlerror());
 
-		void* dllsym = reinterpret_cast<void *>(dlsym(dll, symbol_name));
+		const char* t = pov_tsprintf("%s%s",
+				isvector ? "povray_vector_function_" : "povray_scalar_function_",
+				symbol_name);
+		void* dllsym = reinterpret_cast<void *>(dlsym(dll, t));
 		if (!dllsym)
-			Error("Symbol '%s' could not be found in DLL '%s'.", symbol_name, dll_name);
+			Error("Symbol '%s' could not be found in DLL '%s'.", t, dll_name);
 
 		POV_FREE(symbol_name);
 		POV_FREE(dll_name);
@@ -255,10 +272,10 @@ FUNCTION_PTR Parser::Parse_DeclareFunction(int *token_id, const char *fn_name, b
         function.private_copy_method = (FNCODE_PRIVATE_COPY_METHOD)Copy_Pointer;
         function.private_destroy_method = (FNCODE_PRIVATE_DESTROY_METHOD)Destroy_Pointer;
 		function.private_data = dllsym;
-        function.return_size = 3; // returns a 3d vector!!!
+        function.return_size = isvector ? 3 : 0;
 
         // function type is vector function
-        *token_id = VECTFUNCT_ID_TOKEN;
+        *token_id = isvector ? VECTFUNCT_ID_TOKEN : FUNCT_ID_TOKEN;
 	}
     else if(Token.Token_Id == TRANSFORM_TOKEN)
     {
