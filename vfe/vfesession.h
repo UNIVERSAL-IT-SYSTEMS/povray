@@ -1103,6 +1103,12 @@ namespace vfe
 
       // returns true if the main POV-Ray backend has shut down
       virtual bool BackendFailed() { return m_BackendThreadExited; }
+	  
+      // load a function from a DLL in some platform-specific way. DLLs are only ever
+	  // loaded once, and cannot be unloaded. On failure, return NULL and set error
+	  // to a human-readable error message.
+      virtual void* LoadDLLFunction(const UCS2String& dllname, const UCS2String& symbolname, UCS2String& error);
+
 
     protected:
       // All of the following are internal to vfe.

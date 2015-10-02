@@ -259,6 +259,11 @@ bool vfePlatformBase::ReadFileFromURL(OStream *file, const UCS2String& url, cons
   return false;
 }
 
+void* vfePlatformBase::LoadDLLFunction(const UCS2String& dllname, const UCS2String& symbolname, UCS2String& error)
+{
+  return m_Session->LoadDLLFunction(dllname, symbolname, error);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////
 //
 // class vfeParserMessageHandler

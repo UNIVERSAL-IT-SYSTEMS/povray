@@ -40,6 +40,8 @@
 #include "parser/configparser.h"
 #include "parser/parser.h"
 
+#include "base/platformbase.h"
+
 #include "core/material/pigment.h"
 #include "core/math/matrix.h"
 #include "core/math/spline.h"
@@ -49,8 +51,6 @@
 
 // this must be the last file included
 #include "base/povdebug.h"
-
-#include <dlfcn.h>
 
 namespace pov
 {
@@ -225,7 +225,7 @@ FUNCTION_PTR Parser::Parse_DeclareFunction(int *token_id, const char *fn_name, b
 		Get_Token();
 		if(Token.Token_Id != STRING_LITERAL_TOKEN)
 			Expectation_Error("DLL name");
-		char* dll_name = POV_STRDUP(Token.Token_String);
+		UCS2String dll_name = ASCIItoUCS2String(Token.Token_String);
 
         Get_Token();
         if(Token.Token_Id != COMMA_TOKEN)
@@ -234,7 +234,7 @@ FUNCTION_PTR Parser::Parse_DeclareFunction(int *token_id, const char *fn_name, b
 		Get_Token();
 		if(Token.Token_Id != STRING_LITERAL_TOKEN)
 			Expectation_Error("symbol name");
-		char* symbol_name = POV_STRDUP(Token.Token_String);
+		UCS2String function_name = ASCIItoUCS2String(Token.Token_String);
 
 		bool isvector = false;
         Get_Token();
@@ -254,20 +254,18 @@ FUNCTION_PTR Parser::Parse_DeclareFunction(int *token_id, const char *fn_name, b
 		// 79 refers to POVFPU_TrapTable[79] = f_dll_scalar [trf]
         expression = FNSyntax_GetTrapExpression(isvector ? 3 : 79);
 
-		/* FIXME --- this needs to be abstracted out to be portable */
-		void* dll = dlopen(dll_name, RTLD_LAZY);
-		if (!dll)
-			Error("DLL '%s' could not be loaded: %s", dll_name, dlerror());
-
-		const char* t = pov_tsprintf("%s%s",
-				isvector ? "povray_vector_function_" : "povray_scalar_function_",
-				symbol_name);
-		void* dllsym = reinterpret_cast<void *>(dlsym(dll, t));
-		if (!dllsym)
-			Error("Symbol '%s' could not be found in DLL '%s'.", t, dll_name);
-
-		POV_FREE(symbol_name);
-		POV_FREE(dll_name);
+		UCS2String symbol_name = ASCIItoUCS2String(
+			isvector ? "povray_vector_function_" : "povray_scalar_function_");
+		symbol_name += function_name;
+			
+		UCS2String error;
+		void* dllsym = PlatformBase::GetPlatformBaseReference().LoadDLLFunction(
+				dll_name, symbol_name, error);
+		if(!dllsym)
+			Error("Symbol '%s' could not be found in DLL '%s': %s",
+				UCS2toASCIIString(symbol_name).c_str(),
+				UCS2toASCIIString(dll_name).c_str(),
+				UCS2toASCIIString(error).c_str());
 
         function.private_copy_method = (FNCODE_PRIVATE_COPY_METHOD)Copy_Pointer;
         function.private_destroy_method = (FNCODE_PRIVATE_DESTROY_METHOD)Destroy_Pointer;

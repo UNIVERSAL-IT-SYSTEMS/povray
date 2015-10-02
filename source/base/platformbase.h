@@ -62,6 +62,7 @@ class PlatformBase
         virtual void DeleteTemporaryFile(const UCS2String& filename) = 0;
 
         virtual bool ReadFileFromURL(OStream *file, const UCS2String& url, const UCS2String& referrer = UCS2String()) = 0;
+		virtual void* LoadDLLFunction(const UCS2String& dllname, const UCS2String& symbolname, UCS2String& error) = 0;
 
         static PlatformBase& GetPlatformBaseReference() { return *self; };
     private:

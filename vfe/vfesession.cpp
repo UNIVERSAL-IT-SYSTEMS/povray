@@ -1094,4 +1094,10 @@ int vfeSession::Initialize(vfeDestInfo *Dest, vfeAuthInfo *Auth)
   return (vfeNoError) ;
 }
 
+void* vfeSession::LoadDLLFunction(const UCS2String& dllname, const UCS2String& symbolname, UCS2String& error)
+{
+	error = ASCIItoUCS2String("DLLs are not supported on this platform");
+	return NULL;
+}
+
 }

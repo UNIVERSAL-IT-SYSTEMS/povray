@@ -46,6 +46,7 @@
 #endif
 
 // other library headers
+#include <dlfcn.h>
 #include <pthread.h>
 #ifdef HAVE_SYS_TIME_H
 # include <sys/time.h>
@@ -323,6 +324,20 @@ namespace vfePlatform
         m_OptionsProc->IORestrictionsError(UCS2toASCIIString(file()), isWrite, true);
         return (false);
     }
+
+	void* vfeUnixSession::LoadDLLFunction(const UCS2String& dllname, const UCS2String& symbolname, UCS2String& error)
+	{
+		void* dll = dlopen(UCS2toASCIIString(dllname).c_str(), RTLD_LAZY);
+		if (dll)
+		{
+			void* symbol = dlsym(dll, UCS2toASCIIString(symbolname).c_str());
+			if (symbol)
+				return symbol;
+		}
+
+		error = ASCIItoUCS2String(dlerror());
+		return NULL;
+	}
 
     /////////////////////////////////////////////////////////////////////////////
     // Shellout support class (UnixShelloutProcessing)

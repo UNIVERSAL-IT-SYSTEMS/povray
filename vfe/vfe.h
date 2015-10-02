@@ -128,6 +128,7 @@ namespace vfe
       virtual UCS2String CreateTemporaryFile(void);
       virtual void DeleteTemporaryFile(const UCS2String& filename);
       virtual bool ReadFileFromURL(OStream *file, const UCS2String& url, const UCS2String& referrer = UCS2String());
+      virtual void* LoadDLLFunction(const UCS2String& dllname, const UCS2String& symbolname, UCS2String& error);
 
     protected:
       vfeSession* m_Session;

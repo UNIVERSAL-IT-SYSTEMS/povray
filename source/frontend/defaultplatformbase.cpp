@@ -94,6 +94,12 @@ bool DefaultPlatformBase::ReadFileFromURL(OStream *, const UCS2String&, const UC
 {
     return false;
 }
-
+		
+void* DefaultPlatformBase::LoadDLLFunction(const UCS2String& dllname, const UCS2String& symbolname,
+		UCS2String& error)
+{
+	error = ASCIItoUCS2String("DLL functions are not supported on this platform");
+	return NULL;
+}
 
 }
