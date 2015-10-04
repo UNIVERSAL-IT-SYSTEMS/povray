@@ -3796,58 +3796,28 @@ ObjectPtr Parser::Parse_Mesh()
 			{
 				const struct povray_triangle& t = triangles[i];
 
-				/* NOTE(dg): this much is the same code as for smooth triangles
+				/* NOTE(dg): this much is the same code as for flat triangles
 				 * above.  It'd be nice to refactor this. */
 
 				P1 = Vector3d(t.point[0].x, t.point[0].y, t.point[0].z);
-				N1 = Vector3d(t.normal[0].x, t.normal[0].y, t.normal[0].z);
-				if(fabs(N1[X])<EPSILON && fabs(N1[Y])<EPSILON && fabs(N1[Z])<EPSILON)
-				{
-					N1[X] = 1.0;  // make it nonzero
-					if(!foundZeroNormal)
-						Warning("Normal vector in mesh cannot be zero - changing it to <1,0,0>.");
-					foundZeroNormal = true;
-				}
-
 				P2 = Vector3d(t.point[1].x, t.point[1].y, t.point[1].z);
-				N2 = Vector3d(t.normal[1].x, t.normal[1].y, t.normal[1].z);
-				if(fabs(N2[X])<EPSILON && fabs(N2[Y])<EPSILON && fabs(N2[Z])<EPSILON)
-				{
-					N2[X] = 1.0;  // make it nonzero
-					if(!foundZeroNormal)
-						Warning("Normal vector in mesh cannot be zero - changing it to <1,0,0>.");
-					foundZeroNormal = true;
-				}
-
 				P3 = Vector3d(t.point[2].x, t.point[2].y, t.point[2].z);
-				N3 = Vector3d(t.normal[2].x, t.normal[2].y, t.normal[2].z);
-				if(fabs(N3[X])<EPSILON && fabs(N3[Y])<EPSILON && fabs(N3[Z])<EPSILON)
-				{
-					N3[X] = 1.0;  // make it nonzero
-					if(!foundZeroNormal)
-						Warning("Normal vector in mesh cannot be zero - changing it to <1,0,0>.");
-					foundZeroNormal = true;
-				}
 
-				l1 = N1.length();
-				l2 = N2.length();
-				l3 = N3.length();
+				N = Vector3d(t.normal.x, t.normal.y, t.normal.z);
 
-				if ((l1 != 0.0) && (l2 != 0.0) && (l3 != 0.0) && (!Object->Degenerate(P1, P2, P3)))
+				if (!Object->Degenerate(P1, P2, P3))
 				{
 					if (number_of_triangles >= max_triangles)
 					{
 						if (max_triangles >= std::numeric_limits<int>::max()/2)
+						{
 							Error("Too many triangles in triangle mesh.");
+						}
 
 						max_triangles *= 2;
 
 						Triangles = reinterpret_cast<MESH_TRIANGLE *>(POV_REALLOC(Triangles, max_triangles*sizeof(MESH_TRIANGLE), "triangle triangle mesh data"));
 					}
-
-					N1 /= l1;
-					N2 /= l2;
-					N3 /= l3;
 
 					/* Init triangle. */
 
@@ -3857,22 +3827,14 @@ ObjectPtr Parser::Parse_Mesh()
 					Triangles[number_of_triangles].P2 = Object->Mesh_Hash_Vertex(&number_of_vertices, &max_vertices, &Vertices, P2);
 					Triangles[number_of_triangles].P3 = Object->Mesh_Hash_Vertex(&number_of_vertices, &max_vertices, &Vertices, P3);
 
-					/* Check for equal normals. */
-
-					D1 = N1 - N2;
-					D2 = N1 - N3;
-
-					l1 = D1.lengthSqr();
-					l2 = D2.lengthSqr();
-
 					/* NK 1998 */
-					UV1 = Vector2d(t.uv[0].x, t.uv[0].y);
-					UV2 = Vector2d(t.uv[1].x, t.uv[1].y);
-					UV3 = Vector2d(t.uv[2].x, t.uv[2].y);
+					Parse_Three_UVCoords(UV1,UV2,UV3);
 					Triangles[number_of_triangles].UV1 = Object->Mesh_Hash_UV(&number_of_uvcoords, &max_uvcoords, &UVCoords, UV1);
 					Triangles[number_of_triangles].UV2 = Object->Mesh_Hash_UV(&number_of_uvcoords, &max_uvcoords, &UVCoords, UV2);
 					Triangles[number_of_triangles].UV3 = Object->Mesh_Hash_UV(&number_of_uvcoords, &max_uvcoords, &UVCoords, UV3);
+					/* NK ---- */
 
+					/* NK */
 					/* read possibly three instead of only one texture */
 					/* read these before compute!!! */
 					t2 = t3 = NULL;
@@ -3881,29 +3843,12 @@ ObjectPtr Parser::Parse_Mesh()
 					if (t3) Triangles[number_of_triangles].Texture3 = Object->Mesh_Hash_Texture(&number_of_textures, &max_textures, &Textures, t3);
 					if (t2 || t3) Triangles[number_of_triangles].ThreeTex = true;
 
-					if ((fabs(l1) > EPSILON) || (fabs(l2) > EPSILON))
-					{
-						/* Smooth triangle. */
-
-						Triangles[number_of_triangles].N1 = Object->Mesh_Hash_Normal(&number_of_normals, &max_normals, &Normals, N1);
-						Triangles[number_of_triangles].N2 = Object->Mesh_Hash_Normal(&number_of_normals, &max_normals, &Normals, N2);
-						Triangles[number_of_triangles].N3 = Object->Mesh_Hash_Normal(&number_of_normals, &max_normals, &Normals, N3);
-
-						Object->Compute_Mesh_Triangle(&Triangles[number_of_triangles], true, P1, P2, P3, N);
-					}
-					else
-					{
-						/* Flat triangle. */
-
-						Object->Compute_Mesh_Triangle(&Triangles[number_of_triangles], false, P1, P2, P3, N);
-					}
+					Object->Compute_Mesh_Triangle(&Triangles[number_of_triangles], false, P1, P2, P3, N);
 
 					Triangles[number_of_triangles].Normal_Ind = Object->Mesh_Hash_Normal(&number_of_normals, &max_normals, &Normals, N);
 
-					if (Triangles[number_of_triangles].Texture < 0)
-					{
+					if(Triangles[number_of_triangles].Texture < 0)
 						fully_textured = false;
-					}
 
 					number_of_triangles++;
 				}
