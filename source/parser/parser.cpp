@@ -3759,104 +3759,6 @@ ObjectPtr Parser::Parse_Mesh()
             Parse_End();
         END_CASE
 
-		CASE(DLL_TOKEN)
-		{
-			Get_Token();
-			if(Token.Token_Id != STRING_LITERAL_TOKEN)
-				Expectation_Error("DLL name");
-			UCS2String dll_name = ASCIItoUCS2String(Token.Token_String);
-
-			Get_Token();
-			if(Token.Token_Id != COMMA_TOKEN)
-				Expectation_Error("comma");
-
-			Get_Token();
-			if(Token.Token_Id != STRING_LITERAL_TOKEN)
-				Expectation_Error("symbol name");
-			UCS2String function_name = ASCIItoUCS2String(Token.Token_String);
-
-			UCS2String symbol_name = ASCIItoUCS2String("povray_mesh_function_");
-			symbol_name += function_name;
-			
-			UCS2String error;
-			void* dllsym = PlatformBase::GetPlatformBaseReference().LoadDLLFunction(
-					dll_name, symbol_name, error);
-			if(!dllsym)
-				Error("Symbol '%s' could not be found in DLL '%s': %s",
-					UCS2toASCIIString(symbol_name).c_str(),
-					UCS2toASCIIString(dll_name).c_str(),
-					UCS2toASCIIString(error).c_str());
-
-			struct povray_triangle* triangles;
-			int count;
-			povray_free_triangles_fn* freer;
-			reinterpret_cast<povray_mesh_fn*>(dllsym)(&triangles, &count, &freer);
-
-			for (int i=0; i<count; i++)
-			{
-				const struct povray_triangle& t = triangles[i];
-
-				/* NOTE(dg): this much is the same code as for flat triangles
-				 * above.  It'd be nice to refactor this. */
-
-				P1 = Vector3d(t.point[0].x, t.point[0].y, t.point[0].z);
-				P2 = Vector3d(t.point[1].x, t.point[1].y, t.point[1].z);
-				P3 = Vector3d(t.point[2].x, t.point[2].y, t.point[2].z);
-
-				N = Vector3d(t.normal.x, t.normal.y, t.normal.z);
-
-				if (!Object->Degenerate(P1, P2, P3))
-				{
-					if (number_of_triangles >= max_triangles)
-					{
-						if (max_triangles >= std::numeric_limits<int>::max()/2)
-						{
-							Error("Too many triangles in triangle mesh.");
-						}
-
-						max_triangles *= 2;
-
-						Triangles = reinterpret_cast<MESH_TRIANGLE *>(POV_REALLOC(Triangles, max_triangles*sizeof(MESH_TRIANGLE), "triangle triangle mesh data"));
-					}
-
-					/* Init triangle. */
-
-					Object->Init_Mesh_Triangle(&Triangles[number_of_triangles]);
-
-					Triangles[number_of_triangles].P1 = Object->Mesh_Hash_Vertex(&number_of_vertices, &max_vertices, &Vertices, P1);
-					Triangles[number_of_triangles].P2 = Object->Mesh_Hash_Vertex(&number_of_vertices, &max_vertices, &Vertices, P2);
-					Triangles[number_of_triangles].P3 = Object->Mesh_Hash_Vertex(&number_of_vertices, &max_vertices, &Vertices, P3);
-
-					/* NK 1998 */
-					Parse_Three_UVCoords(UV1,UV2,UV3);
-					Triangles[number_of_triangles].UV1 = Object->Mesh_Hash_UV(&number_of_uvcoords, &max_uvcoords, &UVCoords, UV1);
-					Triangles[number_of_triangles].UV2 = Object->Mesh_Hash_UV(&number_of_uvcoords, &max_uvcoords, &UVCoords, UV2);
-					Triangles[number_of_triangles].UV3 = Object->Mesh_Hash_UV(&number_of_uvcoords, &max_uvcoords, &UVCoords, UV3);
-					/* NK ---- */
-
-					/* NK */
-					/* read possibly three instead of only one texture */
-					/* read these before compute!!! */
-					t2 = t3 = NULL;
-					Triangles[number_of_triangles].Texture = Object->Mesh_Hash_Texture(&number_of_textures, &max_textures, &Textures, Parse_Mesh_Texture(&t2,&t3));
-					if (t2) Triangles[number_of_triangles].Texture2 = Object->Mesh_Hash_Texture(&number_of_textures, &max_textures, &Textures, t2);
-					if (t3) Triangles[number_of_triangles].Texture3 = Object->Mesh_Hash_Texture(&number_of_textures, &max_textures, &Textures, t3);
-					if (t2 || t3) Triangles[number_of_triangles].ThreeTex = true;
-
-					Object->Compute_Mesh_Triangle(&Triangles[number_of_triangles], false, P1, P2, P3, N);
-
-					Triangles[number_of_triangles].Normal_Ind = Object->Mesh_Hash_Normal(&number_of_normals, &max_normals, &Normals, N);
-
-					if(Triangles[number_of_triangles].Texture < 0)
-						fully_textured = false;
-
-					number_of_triangles++;
-				}
-			}
-			freer(triangles);
-		}
-		END_CASE
-
         /* NK 1998 */
         CASE(INSIDE_VECTOR_TOKEN)
             Parse_Vector(Inside_Vect);
@@ -3870,6 +3772,7 @@ ObjectPtr Parser::Parse_Mesh()
         END_CASE
     END_EXPECT
 
+	printf("%d\n", __LINE__);
     /* Destroy hash tables. */
 
     Object->Destroy_Mesh_Hash_Tables();
@@ -4083,362 +3986,491 @@ ObjectPtr Parser::Parse_Mesh2()
     number_of_normals = 0;
     number_of_normal_indices = 0;
 
+	Get_Token();
+	if (Token.Token_Id != DLL_TOKEN)
+	{
+        Unget_Token();
+		
+		/* -----------------  Get the Normals & UV Vectors & Textures ------------ */
+		EXPECT
 
-    /* -----------------  Get the Normals & UV Vectors & Textures ------------ */
-    EXPECT
-        /* -------------------  Get the Vertices ------------------- */
-        CASE(VERTEX_VECTORS_TOKEN)
-            if (number_of_vertices>0)
-            {
-                Warning("Duplicate vertex_vectors block; ignoring previous block.");
-                POV_FREE(Vertices);
-            }
+			/* -------------------  Get the Vertices ------------------- */
+			CASE(VERTEX_VECTORS_TOKEN)
+				if (number_of_vertices>0)
+				{
+					Warning("Duplicate vertex_vectors block; ignoring previous block.");
+					POV_FREE(Vertices);
+				}
 
-            Parse_Begin();
+				Parse_Begin();
 
-            number_of_vertices = (int)Parse_Float(); Parse_Comma();
+				number_of_vertices = (int)Parse_Float(); Parse_Comma();
 
-            if (number_of_vertices<=0)
-                Error("No vertices in triangle mesh.");
+				if (number_of_vertices<=0)
+					Error("No vertices in triangle mesh.");
 
-            /* allocate memory for vertices */
-            Vertices = reinterpret_cast<MeshVector *>(POV_MALLOC(number_of_vertices*sizeof(MeshVector), "triangle mesh data"));
+				/* allocate memory for vertices */
+				Vertices = reinterpret_cast<MeshVector *>(POV_MALLOC(number_of_vertices*sizeof(MeshVector), "triangle mesh data"));
 
-            for(i=0; i<number_of_vertices; i++)
-            {
-                Parse_Vector(P1); Parse_Comma();
-                Vertices[i] = MeshVector(P1);
-            }
-            Parse_End();
-        END_CASE
+				for(i=0; i<number_of_vertices; i++)
+				{
+					Parse_Vector(P1); Parse_Comma();
+					Vertices[i] = MeshVector(P1);
+				}
+				Parse_End();
+			END_CASE
 
-        CASE(NORMAL_VECTORS_TOKEN)
-            if (number_of_normals>0)
-            {
-                Warning("Duplicate normal_vectors block; ignoring previous block.");
-                POV_FREE(Normals);
-            }
+			CASE(NORMAL_VECTORS_TOKEN)
+				if (number_of_normals>0)
+				{
+					Warning("Duplicate normal_vectors block; ignoring previous block.");
+					POV_FREE(Normals);
+				}
 
-            Parse_Begin();
-            number_of_normals = (int)Parse_Float(); Parse_Comma();
+				Parse_Begin();
+				number_of_normals = (int)Parse_Float(); Parse_Comma();
 
-            if (number_of_normals>0)
-            {
-                Normals = reinterpret_cast<MeshVector *>(POV_MALLOC(number_of_normals*sizeof(MeshVector), "triangle mesh data"));
+				if (number_of_normals>0)
+				{
+					Normals = reinterpret_cast<MeshVector *>(POV_MALLOC(number_of_normals*sizeof(MeshVector), "triangle mesh data"));
 
-                /* leave space in the array for the raw triangle normals */
-                for(i=0; i<number_of_normals; i++)
-                {
-                    Parse_Vector(N1); Parse_Comma();
-                    if(fabs(N1[X])<EPSILON && fabs(N1[Y])<EPSILON && fabs(N1[Z])<EPSILON)
-                    {
-                        N1[X] = 1.0;  // make it nonzero
-                        if(!foundZeroNormal)
-                            Warning("Normal vector in mesh2 cannot be zero - changing it to <1,0,0>.");
-                        foundZeroNormal = true;
-                    }
-                    N1.normalize();
-                    Normals[i] = MeshVector(N1);
-                }
-            }
+					/* leave space in the array for the raw triangle normals */
+					for(i=0; i<number_of_normals; i++)
+					{
+						Parse_Vector(N1); Parse_Comma();
+						if(fabs(N1[X])<EPSILON && fabs(N1[Y])<EPSILON && fabs(N1[Z])<EPSILON)
+						{
+							N1[X] = 1.0;  // make it nonzero
+							if(!foundZeroNormal)
+								Warning("Normal vector in mesh2 cannot be zero - changing it to <1,0,0>.");
+							foundZeroNormal = true;
+						}
+						N1.normalize();
+						Normals[i] = MeshVector(N1);
+					}
+				}
 
-            Parse_End();
-        END_CASE
+				Parse_End();
+			END_CASE
 
-        CASE(UV_VECTORS_TOKEN)
-            if (number_of_uvcoords>0)
-            {
-                Warning("Duplicate uv_vectors block; ignoring previous block.");
-                POV_FREE(UVCoords);
-            }
+			CASE(UV_VECTORS_TOKEN)
+				if (number_of_uvcoords>0)
+				{
+					Warning("Duplicate uv_vectors block; ignoring previous block.");
+					POV_FREE(UVCoords);
+				}
 
-            Parse_Begin();
-            number_of_uvcoords = (int)Parse_Float(); Parse_Comma();
+				Parse_Begin();
+				number_of_uvcoords = (int)Parse_Float(); Parse_Comma();
 
-            if (number_of_uvcoords>0)
-            {
-                UVCoords = reinterpret_cast<MeshUVVector *>(POV_MALLOC(number_of_uvcoords*sizeof(MeshUVVector), "triangle mesh data"));
+				if (number_of_uvcoords>0)
+				{
+					UVCoords = reinterpret_cast<MeshUVVector *>(POV_MALLOC(number_of_uvcoords*sizeof(MeshUVVector), "triangle mesh data"));
 
-                for(i=0; i<number_of_uvcoords; i++)
-                {
-                    Parse_UV_Vect(UV1); Parse_Comma();
-                    UVCoords[i] = MeshUVVector(UV1);
-                }
-            }
+					for(i=0; i<number_of_uvcoords; i++)
+					{
+						Parse_UV_Vect(UV1); Parse_Comma();
+						UVCoords[i] = MeshUVVector(UV1);
+					}
+				}
 
-            Parse_End();
-        END_CASE
+				Parse_End();
+			END_CASE
 
-        /*OTHERWISE
-            UNGET
-            EXIT
-        END_CASE
-    END_EXPECT
+			/*OTHERWISE
+				UNGET
+				EXIT
+			END_CASE
+		END_EXPECT
 
-    EXPECT*/
-        CASE(TEXTURE_LIST_TOKEN)
-            Parse_Begin();
+		EXPECT*/
+			CASE(TEXTURE_LIST_TOKEN)
+				Parse_Begin();
 
-            number_of_textures = (int)Parse_Float();  Parse_Comma();
+				number_of_textures = (int)Parse_Float();  Parse_Comma();
 
-            if (number_of_textures>0)
-            {
-                Textures = reinterpret_cast<TEXTURE **>(POV_MALLOC(number_of_textures*sizeof(TEXTURE *), "triangle mesh data"));
+				if (number_of_textures>0)
+				{
+					Textures = reinterpret_cast<TEXTURE **>(POV_MALLOC(number_of_textures*sizeof(TEXTURE *), "triangle mesh data"));
 
-                for(i=0; i<number_of_textures; i++)
-                {
-                    /*
-                    GET(TEXTURE_ID_TOKEN)
-                    Textures[i] = Copy_Texture_Pointer((reinterpret_cast<EXTURE *>(Token.Data));
-                    */
-                    GET(TEXTURE_TOKEN);
-                    Parse_Begin();
-                    Textures[i] = Parse_Texture();
-                    Post_Textures(Textures[i]);
-                    Parse_End();
-                    Parse_Comma();
-                }
-            }
+					for(i=0; i<number_of_textures; i++)
+					{
+						/*
+						GET(TEXTURE_ID_TOKEN)
+						Textures[i] = Copy_Texture_Pointer((reinterpret_cast<EXTURE *>(Token.Data));
+						*/
+						GET(TEXTURE_TOKEN);
+						Parse_Begin();
+						Textures[i] = Parse_Texture();
+						Post_Textures(Textures[i]);
+						Parse_End();
+						Parse_Comma();
+					}
+				}
 
-            Parse_End();
-            EXIT
-        END_CASE
+				Parse_End();
+				EXIT
+			END_CASE
 
-        OTHERWISE
-            UNGET
-            EXIT
-        END_CASE
+			OTHERWISE
+				UNGET
+				EXIT
+			END_CASE
 
-    END_EXPECT
+		END_EXPECT
 
-    if (number_of_vertices == 0)
-        Error("Vertex vectors not found in mesh2");
+		if (number_of_vertices == 0)
+			Error("Vertex vectors not found in mesh2");
 
-    /* first make sure we at least have one UV coordinate */
-    if (number_of_uvcoords == 0)
-    {
-        number_of_uvcoords = 1;
-        UVCoords = reinterpret_cast<MeshUVVector *>(POV_MALLOC(number_of_uvcoords*sizeof(MeshUVVector), "triangle mesh data"));
-        UVCoords[0][U] = 0;
-        UVCoords[0][V] = 0;
-    }
+		/* first make sure we at least have one UV coordinate */
+		if (number_of_uvcoords == 0)
+		{
+			number_of_uvcoords = 1;
+			UVCoords = reinterpret_cast<MeshUVVector *>(POV_MALLOC(number_of_uvcoords*sizeof(MeshUVVector), "triangle mesh data"));
+			UVCoords[0][U] = 0;
+			UVCoords[0][V] = 0;
+		}
 
-    /* -------------------  Get the Faces ------------------- */
-    GET(FACE_INDICES_TOKEN)
-            Parse_Begin();
+		/* -------------------  Get the Faces ------------------- */
+		GET(FACE_INDICES_TOKEN)
+				Parse_Begin();
 
-    /* number faces is mandatory, so we ask how many there are */
-    number_of_triangles = Parse_Float(); Parse_Comma();
+		/* number faces is mandatory, so we ask how many there are */
+		number_of_triangles = Parse_Float(); Parse_Comma();
 
-    if (number_of_triangles == 0)
-    {
-        Error("No triangles in triangle mesh.");
-    }
+		if (number_of_triangles == 0)
+		{
+			Error("No triangles in triangle mesh.");
+		}
 
-    /* allocate memory for triangles */
-    Triangles = reinterpret_cast<MESH_TRIANGLE *>(POV_MALLOC(number_of_triangles*sizeof(MESH_TRIANGLE), "triangle mesh data"));
+		/* allocate memory for triangles */
+		Triangles = reinterpret_cast<MESH_TRIANGLE *>(POV_MALLOC(number_of_triangles*sizeof(MESH_TRIANGLE), "triangle mesh data"));
 
-    /* start reading triangles */
+		/* start reading triangles */
 
-    for(i=0; i<number_of_triangles; i++)
-    {
-        /* read in the indices vector */
-        Parse_Vector(P1); Parse_Comma();
+		for(i=0; i<number_of_triangles; i++)
+		{
+			/* read in the indices vector */
+			Parse_Vector(P1); Parse_Comma();
 
-        /* convert the vector to integers */
-        a = (int)P1[X];
-        b = (int)P1[Y];
-        c = (int)P1[Z];
+			/* convert the vector to integers */
+			a = (int)P1[X];
+			b = (int)P1[Y];
+			c = (int)P1[Z];
 
-        /* a--;b--;c--; use this to start external stuff at 1 */
-        if ( a<0 || b<0 || c<0 ||
-             a>=number_of_vertices || b>=number_of_vertices ||
-             c>=number_of_vertices)
-        {
-            Error("Mesh face index out of range.");
-        }
+			/* a--;b--;c--; use this to start external stuff at 1 */
+			if ( a<0 || b<0 || c<0 ||
+				 a>=number_of_vertices || b>=number_of_vertices ||
+				 c>=number_of_vertices)
+			{
+				Error("Mesh face index out of range.");
+			}
 
-        /* Init triangle. */
-        Object->Init_Mesh_Triangle(&Triangles[i]);
+			/* Init triangle. */
+			Object->Init_Mesh_Triangle(&Triangles[i]);
 
-        /* assign the vertices */
-        Triangles[i].P1 = a;
-        Triangles[i].P2 = b;
-        Triangles[i].P3 = c;
+			/* assign the vertices */
+			Triangles[i].P1 = a;
+			Triangles[i].P2 = b;
+			Triangles[i].P3 = c;
 
-        /* look for a texture index */
-        EXPECT
-            CASE_FLOAT
-                Triangles[i].Texture = Parse_Float(); Parse_Comma();
-                if (Triangles[i].Texture >= number_of_textures ||
-                    Triangles[i].Texture < 0)
-                    Error("Texture index out of range in mesh2.");
-                EXIT
-            END_CASE
+			/* look for a texture index */
+			EXPECT
+				CASE_FLOAT
+					Triangles[i].Texture = Parse_Float(); Parse_Comma();
+					if (Triangles[i].Texture >= number_of_textures ||
+						Triangles[i].Texture < 0)
+						Error("Texture index out of range in mesh2.");
+					EXIT
+				END_CASE
 
-            OTHERWISE
-                Triangles[i].Texture = -1;
-                fully_textured = false;
-                EXIT
-                UNGET
-            END_CASE
-        END_EXPECT
-        /* look for a texture index */
-        EXPECT
-            CASE_FLOAT
-                Triangles[i].Texture2 = Parse_Float(); Parse_Comma();
-                if (Triangles[i].Texture2 >= number_of_textures ||
-                    Triangles[i].Texture2 < 0)
-                    Error("Texture index out of range in mesh2.");
-                Triangles[i].ThreeTex = true;
-                EXIT
-            END_CASE
-            OTHERWISE
-                Triangles[i].Texture2 = -1;
-                EXIT
-                UNGET
-            END_CASE
-        END_EXPECT
-        /* look for a texture index */
-        EXPECT
-            CASE_FLOAT
-                Triangles[i].Texture3 = Parse_Float(); Parse_Comma();
-                if (Triangles[i].Texture3 >= number_of_textures ||
-                    Triangles[i].Texture3 < 0)
-                    Error("Texture index out of range in mesh2.");
-                Triangles[i].ThreeTex = true;
-                EXIT
-            END_CASE
-            OTHERWISE
-                Triangles[i].Texture3 = -1;
-                EXIT
-                UNGET
-            END_CASE
-        END_EXPECT
+				OTHERWISE
+					Triangles[i].Texture = -1;
+					fully_textured = false;
+					EXIT
+					UNGET
+				END_CASE
+			END_EXPECT
+			/* look for a texture index */
+			EXPECT
+				CASE_FLOAT
+					Triangles[i].Texture2 = Parse_Float(); Parse_Comma();
+					if (Triangles[i].Texture2 >= number_of_textures ||
+						Triangles[i].Texture2 < 0)
+						Error("Texture index out of range in mesh2.");
+					Triangles[i].ThreeTex = true;
+					EXIT
+				END_CASE
+				OTHERWISE
+					Triangles[i].Texture2 = -1;
+					EXIT
+					UNGET
+				END_CASE
+			END_EXPECT
+			/* look for a texture index */
+			EXPECT
+				CASE_FLOAT
+					Triangles[i].Texture3 = Parse_Float(); Parse_Comma();
+					if (Triangles[i].Texture3 >= number_of_textures ||
+						Triangles[i].Texture3 < 0)
+						Error("Texture index out of range in mesh2.");
+					Triangles[i].ThreeTex = true;
+					EXIT
+				END_CASE
+				OTHERWISE
+					Triangles[i].Texture3 = -1;
+					EXIT
+					UNGET
+				END_CASE
+			END_EXPECT
 
-    }
+		}
 
-    Parse_End();
+		Parse_End();
 
-    /* now we get the uv_indices & normal_indices in either order */
+		/* now we get the uv_indices & normal_indices in either order */
 
-    EXPECT
-        CASE(UV_INDICES_TOKEN)
-            if (found_uv_indices)
-            {
-                Error("Only one uv_indices section is allowed in mesh2");
-            }
-            found_uv_indices = true;
-            Parse_Begin();
+		EXPECT
+			CASE(UV_INDICES_TOKEN)
+				if (found_uv_indices)
+				{
+					Error("Only one uv_indices section is allowed in mesh2");
+				}
+				found_uv_indices = true;
+				Parse_Begin();
 
-            if (Parse_Float() != number_of_triangles)
-                Error("Number of uv indices must equal number of faces.");
-            Parse_Comma();
+				if (Parse_Float() != number_of_triangles)
+					Error("Number of uv indices must equal number of faces.");
+				Parse_Comma();
 
-            for (i=0; i<number_of_triangles; i++)
-            {
-                /* read in the indices vector */
-                Parse_Vector(P1); Parse_Comma();
+				for (i=0; i<number_of_triangles; i++)
+				{
+					/* read in the indices vector */
+					Parse_Vector(P1); Parse_Comma();
 
-                /* convert the vector to integers */
-                a = (int)P1[X];
-                b = (int)P1[Y];
-                c = (int)P1[Z];
+					/* convert the vector to integers */
+					a = (int)P1[X];
+					b = (int)P1[Y];
+					c = (int)P1[Z];
 
-                /* a--;b--;c--; use this to start external stuff at 1 */
-                if ( a<0 || b<0 || c<0 ||
-                     a>=number_of_uvcoords || b>=number_of_uvcoords ||
-                     c>=number_of_uvcoords)
-                {
-                    Error("Mesh UV index out of range.");
-                }
+					/* a--;b--;c--; use this to start external stuff at 1 */
+					if ( a<0 || b<0 || c<0 ||
+						 a>=number_of_uvcoords || b>=number_of_uvcoords ||
+						 c>=number_of_uvcoords)
+					{
+						Error("Mesh UV index out of range.");
+					}
 
-                /* assign the uv coordinate */
-                Triangles[i].UV1 = a;
-                Triangles[i].UV2 = b;
-                Triangles[i].UV3 = c;
-            }
-            Parse_End();
-            /*EXIT*/
-        END_CASE
+					/* assign the uv coordinate */
+					Triangles[i].UV1 = a;
+					Triangles[i].UV2 = b;
+					Triangles[i].UV3 = c;
+				}
+				Parse_End();
+				/*EXIT*/
+			END_CASE
 
-    /*
-        OTHERWISE
-            UNGET
-            EXIT
-        END_CASE
-    END_EXPECT
+		/*
+			OTHERWISE
+				UNGET
+				EXIT
+			END_CASE
+		END_EXPECT
 
-    EXPECT
-    */
-        CASE(NORMAL_INDICES_TOKEN)
-            if (found_normal_indices)
-            {
-                Error("Only one normal_indices section is allowed in mesh2");
-            }
-            found_normal_indices = true;
-            Parse_Begin();
+		EXPECT
+		*/
+			CASE(NORMAL_INDICES_TOKEN)
+				if (found_normal_indices)
+				{
+					Error("Only one normal_indices section is allowed in mesh2");
+				}
+				found_normal_indices = true;
+				Parse_Begin();
 
-            /*
-            Change - if fewer normals than triangles, then no problem - the
-            rest will be flat triangles.
+				/*
+				Change - if fewer normals than triangles, then no problem - the
+				rest will be flat triangles.
 
-            if (Parse_Float() != number_of_triangles)
-                Error("Number of normal indices must equal number of faces.");
-            */
-            number_of_normal_indices = Parse_Float();
-            if (number_of_normal_indices > number_of_triangles)
-                Error("Number of normal indices cannot be more than the number of faces.");
+				if (Parse_Float() != number_of_triangles)
+					Error("Number of normal indices must equal number of faces.");
+				*/
+				number_of_normal_indices = Parse_Float();
+				if (number_of_normal_indices > number_of_triangles)
+					Error("Number of normal indices cannot be more than the number of faces.");
 
-            Parse_Comma();
+				Parse_Comma();
 
-            for (i=0; i<number_of_normal_indices; i++)
-            {
-                /* read in the indices vector */
-                Parse_Vector(P1); Parse_Comma();
+				for (i=0; i<number_of_normal_indices; i++)
+				{
+					/* read in the indices vector */
+					Parse_Vector(P1); Parse_Comma();
 
-                /* convert the vector to integers */
-                a = (int)P1[X];
-                b = (int)P1[Y];
-                c = (int)P1[Z];
+					/* convert the vector to integers */
+					a = (int)P1[X];
+					b = (int)P1[Y];
+					c = (int)P1[Z];
 
-                /* a--;b--;c--; use this to start external stuff at 1 */
-                if ( a<0 || b<0 ||
-                     c<0 ||
-                     a>=number_of_normals || b>=number_of_normals ||
-                     c>=number_of_normals)
-                {
-                    Error("Mesh normal index out of range.");
-                }
+					/* a--;b--;c--; use this to start external stuff at 1 */
+					if ( a<0 || b<0 ||
+						 c<0 ||
+						 a>=number_of_normals || b>=number_of_normals ||
+						 c>=number_of_normals)
+					{
+						Error("Mesh normal index out of range.");
+					}
 
-                /* assign the uv coordinate */
-                Triangles[i].N1 = a;
-                Triangles[i].N2 = b;
-                Triangles[i].N3 = c;
-            }
-            Parse_End();
-            /*EXIT*/
-        END_CASE
+					/* assign the uv coordinate */
+					Triangles[i].N1 = a;
+					Triangles[i].N2 = b;
+					Triangles[i].N3 = c;
+				}
+				Parse_End();
+				/*EXIT*/
+			END_CASE
 
-        OTHERWISE
-            UNGET
-            EXIT
-        END_CASE
-    END_EXPECT
+			OTHERWISE
+				UNGET
+				EXIT
+			END_CASE
+		END_EXPECT
 
-    /* ----------------------------------------------------- */
-    /* ----------------------------------------------------- */
+		/* ----------------------------------------------------- */
+		/* ----------------------------------------------------- */
 
-    EXPECT
-        CASE(INSIDE_VECTOR_TOKEN)
-            Parse_Vector(Inside_Vect);
-        END_CASE
+		EXPECT
+			CASE(INSIDE_VECTOR_TOKEN)
+				Parse_Vector(Inside_Vect);
+			END_CASE
 
-        OTHERWISE
-            UNGET
-            EXIT
-        END_CASE
-    END_EXPECT
+			OTHERWISE
+				UNGET
+				EXIT
+			END_CASE
+		END_EXPECT
+	}
+	else
+	{
+		/* This is a DLL mesh! This block replaces the entire parser code. */
+
+		Get_Token();
+		if(Token.Token_Id != STRING_LITERAL_TOKEN)
+			Expectation_Error("DLL name");
+		UCS2String dll_name = ASCIItoUCS2String(Token.Token_String);
+
+		Get_Token();
+		if(Token.Token_Id != COMMA_TOKEN)
+			Expectation_Error("comma");
+
+		Get_Token();
+		if(Token.Token_Id != STRING_LITERAL_TOKEN)
+			Expectation_Error("symbol name");
+		UCS2String function_name = ASCIItoUCS2String(Token.Token_String);
+
+		UCS2String symbol_name = ASCIItoUCS2String("povray_mesh_function_");
+		symbol_name += function_name;
+		
+		UCS2String error;
+		void* dllsym = PlatformBase::GetPlatformBaseReference().LoadDLLFunction(
+				dll_name, symbol_name, error);
+		if(!dllsym)
+			Error("Symbol '%s' could not be found in DLL '%s': %s",
+				UCS2toASCIIString(symbol_name).c_str(),
+				UCS2toASCIIString(dll_name).c_str(),
+				UCS2toASCIIString(error).c_str());
+
+		if (number_of_vertices || number_of_uvcoords || number_of_textures
+			|| number_of_normals || number_of_normal_indices)
+		{
+			Error("Mesh is already defined.");
+		}
+
+		struct povray_mesh* mesh = reinterpret_cast<povray_mesh_fn*>(dllsym)();
+
+		number_of_vertices = mesh->number_of_vertices;
+		Vertices = reinterpret_cast<MeshVector *>(POV_MALLOC(number_of_vertices*sizeof(MeshVector), "triangle mesh data"));
+		for(i=0; i<number_of_vertices; i++)
+		{
+			struct povray_point3d& p = mesh->vertices[i];
+			Vertices[i] = MeshVector(Vector3d(p.x, p.y, p.z));
+		}
+
+		number_of_normals = mesh->number_of_normals;
+		if (number_of_normals>0)
+		{
+			Normals = reinterpret_cast<MeshVector *>(POV_MALLOC(number_of_normals*sizeof(MeshVector), "triangle mesh data"));
+
+			/* leave space in the array for the raw triangle normals */
+			for(i=0; i<number_of_normals; i++)
+			{
+				struct povray_point3d& p = mesh->normals[i];
+				N1 = Vector3d(p.x, p.y, p.z);
+				if(fabs(N1[X])<EPSILON && fabs(N1[Y])<EPSILON && fabs(N1[Z])<EPSILON)
+				{
+					N1[X] = 1.0;  // make it nonzero
+					if(!foundZeroNormal)
+						Warning("Normal vector in mesh2 cannot be zero - changing it to <1,0,0>.");
+					foundZeroNormal = true;
+				}
+				N1.normalize();
+				Normals[i] = MeshVector(N1);
+			}
+		}
+
+		number_of_uvcoords = mesh->number_of_uvcoords;
+		if (number_of_uvcoords>0)
+		{
+			UVCoords = reinterpret_cast<MeshUVVector *>(POV_MALLOC(number_of_uvcoords*sizeof(MeshUVVector), "triangle mesh data"));
+
+			for(i=0; i<number_of_uvcoords; i++)
+			{
+				struct povray_point2d& p = mesh->uvcoords[i];
+				UVCoords[i] = MeshUVVector(Vector2d(p.x, p.y));
+			}
+		}
+
+		number_of_triangles = mesh->number_of_triangles;
+		if (number_of_triangles == 0)
+		{
+			Error("No triangles in triangle mesh.");
+		}
+
+		/* allocate memory for triangles */
+		Triangles = reinterpret_cast<MESH_TRIANGLE *>(POV_MALLOC(number_of_triangles*sizeof(MESH_TRIANGLE), "triangle mesh data"));
+
+		/* start reading triangles */
+		for(i=0; i<number_of_triangles; i++)
+		{
+			struct povray_triangle& t = mesh->triangles[i];
+
+			a = t.a;
+			b = t.b;
+			c = t.c;
+
+			/* a--;b--;c--; use this to start external stuff at 1 */
+			if ( a<0 || b<0 || c<0 ||
+				 a>=number_of_vertices || b>=number_of_vertices ||
+				 c>=number_of_vertices)
+			{
+				Error("Mesh face index out of range.");
+			}
+
+			/* Init triangle. */
+			Object->Init_Mesh_Triangle(&Triangles[i]);
+
+			/* assign the vertices */
+			Triangles[i].P1 = a;
+			Triangles[i].P2 = b;
+			Triangles[i].P3 = c;
+
+			/* no texture index for DLL meshes */
+			Triangles[i].Texture = -1;
+			Triangles[i].Texture2 = -1;
+			Triangles[i].Texture3 = -1;
+			fully_textured = false;
+		}
+
+		mesh->freer(mesh);
+	}
 
     if (fully_textured)
         Object->Type |= TEXTURED_OBJECT;

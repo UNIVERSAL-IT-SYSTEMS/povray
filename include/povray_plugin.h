@@ -14,17 +14,29 @@ struct povray_point2d {
 };
 
 struct povray_triangle {
-	struct povray_point3d point[3];
-	struct povray_point3d normal;
-	struct povray_point2d uv[3];
+	int a, b, c;
+};
+
+struct povray_mesh {
+	void (*freer)(struct povray_mesh*);
+
+	int number_of_vertices;
+	struct povray_point3d* vertices;
+
+	int number_of_uvcoords;
+	struct povray_point2d* uvcoords;
+
+	int number_of_normals;
+	struct povray_point3d* normals;
+
+	int number_of_triangles;
+	struct povray_triangle* triangles;
 };
 
 typedef void povray_vector_fn(double* inputs, double* outputs);
 typedef double povray_scalar_fn(double* inputs);
 	
-typedef void povray_free_triangles_fn(struct povray_triangle* triangle);
-typedef void povray_mesh_fn(struct povray_triangle** triangles,
-	int* count, povray_free_triangles_fn** freer);
+typedef struct povray_mesh* povray_mesh_fn(void);
 
 #ifdef __cplusplus
 }
